@@ -992,172 +992,202 @@ bubbles(b) {
   };
 },
 
+ripples(b) {
+  b.innerHTML = `
+    <h2 id="sheetTitle" class="center">Ripple Chimes</h2>
+    <p class="lede center">
+      Touch and move across the water to create ripples
+      and play gentle notes.
+    </p>
+    <p class="status center" id="rippleMessage"
+       role="status" aria-live="polite">
+      Press and move across the water to begin.
+    </p>
+  `;
 
-  ripples(b) {
-    b.innerHTML = `
-      <h2 id="sheetTitle" class="center">Ripple chimes</h2>
-      <p class="lede center">
-        Touch the water and listen to gentle notes.
-        Each touch sends ripples across the water.
-      </p>
-      <p class="status center" id="rippleMessage"
-         role="status" aria-live="polite">
-        Touch anywhere on the water to begin.
-      </p>
-    `;
+  const { c, g, w, h } = makeCanvas(b, gameH());
+  const P = palette();
 
-    const { c, g, w, h } = makeCanvas(b, gameH());
-    const P = palette();
+  c.style.background =
+    'linear-gradient(180deg, #182C45 0%, #315B70 55%, #527E87 100%)';
+  c.style.touchAction = 'none';
+  c.style.cursor = 'pointer';
 
-    c.style.background =
-      'linear-gradient(180deg, #182C45 0%, #315B70 55%, #527E87 100%)';
-    c.style.touchAction = 'none';
-    c.style.cursor = 'pointer';
+  const message = $('#rippleMessage', b);
 
-    const message = $('#rippleMessage', b);
+  const notes = [
+    261.63, 293.66, 329.63, 392, 440,
+    523.25, 587.33, 659.25, 783.99
+  ];
 
-    const notes = [
-      261.63, 293.66, 329.63, 392, 440,
-      523.25, 587.33, 659.25, 783.99
-    ];
+  const ripples = [];
+  let raf = 0;
+  let last = performance.now();
 
-    const ripples = [];
-    let raf = 0;
-    let last = performance.now();
+  let isPressing = false;
+  let lastRippleTime = 0;
+  let lastX = -100;
+  let lastY = -100;
+  let lastPointerId = null;
 
-    function addRipple(x, y) {
-      ripples.push({
-        x,
-        y,
-        radius: 2,
-        alpha: 0.85,
-        speed: 35 + Math.random() * 20,
-        color: P.m[Math.floor(Math.random() * P.m.length)]
-      });
+  function addRipple(x, y) {
+    ripples.push({
+      x,
+      y,
+      radius: 2,
+      alpha: 0.85,
+      speed: 35 + Math.random() * 20,
+      color: P.m[Math.floor(Math.random() * P.m.length)]
+    });
 
-      // Higher touches play higher notes.
-      const position = Math.max(0, Math.min(1, 1 - y / h));
-      const index = Math.round(position * (notes.length - 1));
+    // Higher positions play higher notes.
+    const position = Math.max(0, Math.min(1, 1 - y / h));
+    const index = Math.round(position * (notes.length - 1));
 
-      Sound.chime(notes[index], 0.8);
+    Sound.chime(notes[index], 0.8);
 
-      message.textContent = 'Listen to the water. Touch again whenever you like.';
+    message.textContent =
+      'Listen to the water. Keep moving to play more notes.';
+  }
+
+  function createRipple(e, force = false) {
+    const [x, y] = canvasPos(c, e);
+    const now = performance.now();
+
+    const dx = x - lastX;
+    const dy = y - lastY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    // Limit how often ripples and notes are created.
+    if (!force && (distance < 15 || now - lastRippleTime < 120)) {
+      return;
     }
 
-    function draw(time) {
-      const dt = Math.min(0.05, (time - last) / 1000);
-      last = time;
+    lastX = x;
+    lastY = y;
+    lastRippleTime = now;
 
-      g.clearRect(0, 0, w, h);
+    addRipple(x, y);
+  }
 
-      // Gentle, horizontal water lines.
-      g.save();
-      g.globalAlpha = 0.12;
-      g.strokeStyle = '#D9F5F2';
+  function draw(time) {
+    const dt = Math.min(0.05, (time - last) / 1000);
+    last = time;
+
+    g.clearRect(0, 0, w, h);
+
+    // Gentle water lines.
+    for (let i = 0; i < 9; i++) {
+      const y = h * 0.15 + i * h * 0.09;
+
+      g.beginPath();
+      g.moveTo(0, y);
+
+      for (let x = 0; x <= w; x += 8) {
+        const wave =
+          Math.sin(x * 0.018 + time * 0.0007 + i) * 3 +
+          Math.sin(x * 0.009 - time * 0.0004) * 2;
+
+        g.lineTo(x, y + wave);
+      }
+
+      g.strokeStyle = 'rgba(220,245,255,0.12)';
       g.lineWidth = 1;
+      g.stroke();
+    }
 
-      for (let y = 25; y < h; y += 32) {
+    // Animate all active ripples.
+    for (let i = ripples.length - 1; i >= 0; i--) {
+      const r = ripples[i];
+
+      r.radius += r.speed * dt;
+      r.alpha -= 0.32 * dt;
+
+      if (r.alpha <= 0) {
+        ripples.splice(i, 1);
+        continue;
+      }
+
+      g.save();
+      g.globalAlpha = r.alpha;
+      g.strokeStyle = r.color;
+      g.lineWidth = 2;
+
+      // Draw three expanding ripple rings.
+      for (let ring = 0; ring < 3; ring++) {
+        const radius = r.radius - ring * 12;
+
+        if (radius <= 0) continue;
+
+        g.globalAlpha = r.alpha * (1 - ring * 0.22);
         g.beginPath();
-        for (let x = 0; x <= w; x += 8) {
-          const waveY =
-            y + Math.sin(x * 0.025 + time * 0.0007 + y) * 3;
-
-          if (x === 0) g.moveTo(x, waveY);
-          else g.lineTo(x, waveY);
-        }
+        g.ellipse(
+          r.x,
+          r.y,
+          radius,
+          radius * 0.36,
+          0,
+          0,
+          Math.PI * 2
+        );
         g.stroke();
       }
+
+      // Glimmer at the point of contact.
+      g.globalAlpha = r.alpha;
+      g.fillStyle = '#FFFFFF';
+      g.beginPath();
+      g.arc(r.x, r.y, 2.5, 0, Math.PI * 2);
+      g.fill();
+
       g.restore();
-
-      // Expand and fade each ripple.
-      for (let i = ripples.length - 1; i >= 0; i--) {
-        const r = ripples[i];
-
-        r.radius += r.speed * dt;
-        r.alpha -= 0.32 * dt;
-
-        if (r.alpha <= 0) {
-          ripples.splice(i, 1);
-          continue;
-        }
-
-        g.save();
-        g.globalAlpha = r.alpha;
-        g.strokeStyle = r.color;
-        g.lineWidth = 2;
-
-        // Draw several concentric rings.
-        for (let ring = 0; ring < 3; ring++) {
-          const radius = r.radius - ring * 12;
-          if (radius <= 0) continue;
-
-          g.globalAlpha = r.alpha * (1 - ring * 0.22);
-          g.beginPath();
-          g.ellipse(
-            r.x,
-            r.y,
-            radius,
-            radius * 0.36,
-            0,
-            0,
-            Math.PI * 2
-          );
-          g.stroke();
-        }
-
-        // Small glimmer at the point of contact.
-        g.globalAlpha = r.alpha;
-        g.fillStyle = '#FFFFFF';
-        g.beginPath();
-        g.arc(r.x, r.y, 2.5, 0, Math.PI * 2);
-        g.fill();
-
-        g.restore();
-      }
-
-      raf = requestAnimationFrame(draw);
     }
-    
-c.addEventListener('pointerdown', e => {
-  const [x, y] = canvasPos(c, e);
-  addRipple(x, y);
-});
-
-let lastHoverTime = 0;
-let lastHoverX = -100;
-let lastHoverY = -100;
-
-c.addEventListener('pointermove', e => {
-  if (e.pointerType === 'touch') return;
-
-  const [x, y] = canvasPos(c, e);
-  const now = performance.now();
-
-  const dx = x - lastHoverX;
-  const dy = y - lastHoverY;
-  const distance = Math.sqrt(dx * dx + dy * dy);
-
-  if (distance < 25 || now - lastHoverTime < 160) return;
-
-  lastHoverX = x;
-  lastHoverY = y;
-  lastHoverTime = now;
-
-  addRipple(x, y);
-});
-
-raf = requestAnimationFrame(draw);
-
-return () => {
-  cancelAnimationFrame(raf);
-};
 
     raf = requestAnimationFrame(draw);
+  }
 
-    return () => {
-      cancelAnimationFrame(raf);
-    };
-  },
+  // Begin on mouse press or finger touch.
+  c.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+    isPressing = true;
+    lastPointerId = e.pointerId;
+
+    lastX = -100;
+    lastY = -100;
+
+    c.setPointerCapture?.(e.pointerId);
+    createRipple(e, true);
+  });
+
+  // Create more ripples while holding and moving.
+  c.addEventListener('pointermove', e => {
+    if (!isPressing || e.pointerId !== lastPointerId) return;
+
+    createRipple(e);
+  });
+
+  // Stop creating ripples when released.
+  function stopPressing(e) {
+    if (e && lastPointerId !== null &&
+        e.pointerId !== lastPointerId) {
+      return;
+    }
+
+    isPressing = false;
+    lastPointerId = null;
+  }
+
+  c.addEventListener('pointerup', stopPressing);
+  c.addEventListener('pointercancel', stopPressing);
+  c.addEventListener('lostpointercapture', stopPressing);
+
+  raf = requestAnimationFrame(draw);
+
+  return () => {
+    cancelAnimationFrame(raf);
+  };
+},
 
   stars(b){
     const SH = [
