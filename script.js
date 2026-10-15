@@ -992,6 +992,144 @@ bubbles(b) {
   };
 },
 
+
+  ripples(b) {
+    b.innerHTML = `
+      <h2 id="sheetTitle" class="center">Ripple chimes</h2>
+      <p class="lede center">
+        Touch the water and listen to gentle notes.
+        Each touch sends ripples across the water.
+      </p>
+      <p class="status center" id="rippleMessage"
+         role="status" aria-live="polite">
+        Touch anywhere on the water to begin.
+      </p>
+    `;
+
+    const { c, g, w, h } = makeCanvas(b, gameH());
+    const P = palette();
+
+    c.style.background =
+      'linear-gradient(180deg, #182C45 0%, #315B70 55%, #527E87 100%)';
+    c.style.touchAction = 'none';
+    c.style.cursor = 'pointer';
+
+    const message = $('#rippleMessage', b);
+
+    const notes = [
+      261.63, 293.66, 329.63, 392, 440,
+      523.25, 587.33, 659.25, 783.99
+    ];
+
+    const ripples = [];
+    let raf = 0;
+    let last = performance.now();
+
+    function addRipple(x, y) {
+      ripples.push({
+        x,
+        y,
+        radius: 2,
+        alpha: 0.85,
+        speed: 35 + Math.random() * 20,
+        color: P.m[Math.floor(Math.random() * P.m.length)]
+      });
+
+      // Higher touches play higher notes.
+      const position = Math.max(0, Math.min(1, 1 - y / h));
+      const index = Math.round(position * (notes.length - 1));
+
+      Sound.chime(notes[index], 0.8);
+
+      message.textContent = 'Listen to the water. Touch again whenever you like.';
+    }
+
+    function draw(time) {
+      const dt = Math.min(0.05, (time - last) / 1000);
+      last = time;
+
+      g.clearRect(0, 0, w, h);
+
+      // Gentle, horizontal water lines.
+      g.save();
+      g.globalAlpha = 0.12;
+      g.strokeStyle = '#D9F5F2';
+      g.lineWidth = 1;
+
+      for (let y = 25; y < h; y += 32) {
+        g.beginPath();
+        for (let x = 0; x <= w; x += 8) {
+          const waveY =
+            y + Math.sin(x * 0.025 + time * 0.0007 + y) * 3;
+
+          if (x === 0) g.moveTo(x, waveY);
+          else g.lineTo(x, waveY);
+        }
+        g.stroke();
+      }
+      g.restore();
+
+      // Expand and fade each ripple.
+      for (let i = ripples.length - 1; i >= 0; i--) {
+        const r = ripples[i];
+
+        r.radius += r.speed * dt;
+        r.alpha -= 0.32 * dt;
+
+        if (r.alpha <= 0) {
+          ripples.splice(i, 1);
+          continue;
+        }
+
+        g.save();
+        g.globalAlpha = r.alpha;
+        g.strokeStyle = r.color;
+        g.lineWidth = 2;
+
+        // Draw several concentric rings.
+        for (let ring = 0; ring < 3; ring++) {
+          const radius = r.radius - ring * 12;
+          if (radius <= 0) continue;
+
+          g.globalAlpha = r.alpha * (1 - ring * 0.22);
+          g.beginPath();
+          g.ellipse(
+            r.x,
+            r.y,
+            radius,
+            radius * 0.36,
+            0,
+            0,
+            Math.PI * 2
+          );
+          g.stroke();
+        }
+
+        // Small glimmer at the point of contact.
+        g.globalAlpha = r.alpha;
+        g.fillStyle = '#FFFFFF';
+        g.beginPath();
+        g.arc(r.x, r.y, 2.5, 0, Math.PI * 2);
+        g.fill();
+
+        g.restore();
+      }
+
+      raf = requestAnimationFrame(draw);
+    }
+
+    c.addEventListener('pointerdown', e => {
+      const [x, y] = canvasPos(c, e);
+      addRipple(x, y);
+    });
+
+    raf = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(raf);
+    };
+  },
+
   stars(b){
     const SH = [
       {name:'Heart', pts:[[.5,.88],[.26,.62],[.16,.4],[.22,.22],[.38,.16],[.5,.3],[.62,.16],[.78,.22],[.84,.4],[.74,.62]], path:[0,1,2,3,4,5,6,7,8,9,0]},
