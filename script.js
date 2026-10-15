@@ -1117,11 +1117,40 @@ bubbles(b) {
 
       raf = requestAnimationFrame(draw);
     }
+    
+c.addEventListener('pointerdown', e => {
+  const [x, y] = canvasPos(c, e);
+  addRipple(x, y);
+});
 
-    c.addEventListener('pointerdown', e => {
-      const [x, y] = canvasPos(c, e);
-      addRipple(x, y);
-    });
+let lastHoverTime = 0;
+let lastHoverX = -100;
+let lastHoverY = -100;
+
+c.addEventListener('pointermove', e => {
+  if (e.pointerType === 'touch') return;
+
+  const [x, y] = canvasPos(c, e);
+  const now = performance.now();
+
+  const dx = x - lastHoverX;
+  const dy = y - lastHoverY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  if (distance < 25 || now - lastHoverTime < 160) return;
+
+  lastHoverX = x;
+  lastHoverY = y;
+  lastHoverTime = now;
+
+  addRipple(x, y);
+});
+
+raf = requestAnimationFrame(draw);
+
+return () => {
+  cancelAnimationFrame(raf);
+};
 
     raf = requestAnimationFrame(draw);
 
